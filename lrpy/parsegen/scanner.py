@@ -157,10 +157,7 @@ class GrammarScanner(BaseScanner):
                 ):
                     self.fail('Unmatched closing parenthesis', startpos, startlineno)
 
-                return Token(
-                    TokenType.CLOSEPAREN,
-                    TextRange(startpos, startpos + 1, startlineno, startlineno)
-                )
+                return Token(TokenType.CLOSEPAREN, self.create_range(startpos, startpos + 1))
 
             elif reader.expect('['):
                 self.parenstack.append(TokenType.OPENBRACKET)
