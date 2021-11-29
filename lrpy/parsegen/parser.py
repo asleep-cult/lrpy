@@ -134,8 +134,10 @@ class GrammarParser:
             item = ast.OptionalItemNode(
                 token.range.extend(item.range).extend(closebracket_token.range), item=item
             )
+
         elif token.type is TokenType.STRING:
             item = ast.StringItemNode(token.range, string=token.content)
+
         elif token.type is TokenType.IDENTIFIER:
             colon_token = self.peek_token()
             if colon_token.type is TokenType.COLON:
@@ -146,6 +148,7 @@ class GrammarParser:
                 )
             else:
                 item = ast.IdentifierItemNode(token.range, identifier=token.content)
+
         elif token.type is TokenType.OPENPAREN:
             items = []
             item = self._parse_item()
@@ -163,6 +166,7 @@ class GrammarParser:
                 items.append(self._parse_item())
 
             return ast.GroupItemNode(range, items=items)
+
         else:
             self.fail('Unexpected Token', token)
 
