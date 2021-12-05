@@ -1,0 +1,2 @@
+class UnknownSymbolError(Exception):
+    pass

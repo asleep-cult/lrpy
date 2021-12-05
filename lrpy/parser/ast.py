@@ -35,7 +35,7 @@ class RuleNode(BaseNode):
         self.alternatives = alternatives
 
     def __repr__(self) -> str:
-        return f'RuleNode({self.range!r}, name={self.name}, alternatives={self.alternatives!r})'
+        return f'RuleNode({self.range!r}, name={self.name!r}, alternatives={self.alternatives!r})'
 
     def __str__(self) -> str:
         parts = [f'rule {self.name} {{']

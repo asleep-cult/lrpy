@@ -34,11 +34,11 @@ class Token(BaseToken):
 
 
 class ForeignBlockToken(Token):
-    __slots__ = ('block',)
+    __slots__ = ('content',)
 
-    def __init__(self, range: TextRange, block: str) -> None:
+    def __init__(self, range: TextRange, content: str) -> None:
         super().__init__(TokenType.FOREIGNBLOCK, range)
-        self.block = block
+        self.content = content
 
 
 class StringToken(BaseToken):

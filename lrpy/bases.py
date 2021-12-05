@@ -1,17 +1,62 @@
 from __future__ import annotations
 
-import enum
 import io
-from typing import Optional
+from typing import Iterable, Optional, TYPE_CHECKING
 
 from .stringreader import StringReader
 from .textrange import TextRange
 
 
+class TokenEnum:
+    if TYPE_CHECKING:
+        id: int
+        name: str
+        value: Optional[str]
+
+    def __init_subclass__(cls) -> None:
+        cls._tokens_ = {}
+
+        for name, value in cls.__dict__.items():
+            if isinstance(value, _TokenWrapper):
+                value.initialize(cls, name)
+
+    @classmethod
+    def get_token_names(cls) -> Iterable[str]:
+        return cls._tokens_.keys()
+
+    @classmethod
+    def get_token_values(cls) -> Iterable[TokenEnum]:
+        return cls._tokens_.values()
+
+    @classmethod
+    def get_token(cls, name: str) -> TokenEnum:
+        return cls._tokens_[name]
+
+
+class _TokenWrapper:
+    __slots__ = ('cls', 'id', 'name', 'value')
+
+    def __init__(self, value: Optional[str] = None) -> None:
+        self.value = value
+
+    def initialize(self, cls: type[TokenEnum], name: str) -> None:
+        self.cls = cls
+        self.id = len(cls._tokens_)
+        self.name = name
+        cls._tokens_[self.name] = self
+
+    def __repr__(self) -> str:
+        return f'<{self.cls.__name__}:{self.name}>'
+
+
+def token(value: Optional[str] = None) -> TokenEnum:
+    return _TokenWrapper(value)  # type: ignore
+
+
 class BaseToken:
     __slots__ = ('type', 'range')
 
-    def __init__(self, type: enum.Enum, range: TextRange) -> None:
+    def __init__(self, type: TokenEnum, range: TextRange) -> None:
         self.type = type
         self.range = range
 

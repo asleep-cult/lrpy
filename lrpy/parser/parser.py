@@ -116,23 +116,23 @@ class GrammarParser:
                 self.fail('Expected block', token)
 
             range = range.extend(token.range)
-            action = token.block
+            action = token.content
         else:
             action = None
 
         return ast.AlternativeNode(range, items=items, action=action)
 
-    def _parse_item(self) -> ast.ItemNode:
+    def _parse_item(self, *, named=True) -> ast.ItemNode:
         token = self.consume_token()
         if token.type is TokenType.OPENBRACKET:
-            item = self._parse_item()
+            item = self._parse_item(named=False)
 
             closebracket_token = self.consume_token()
             if closebracket_token.type is not TokenType.CLOSEBRACKET:
                 self.fail('Expected close bracket', closebracket_token)
 
             item = ast.OptionalItemNode(
-                token.range.extend(item.range).extend(closebracket_token.range), item=item
+                token.range.extend(closebracket_token.range), item=item
             )
 
         elif token.type is TokenType.STRING:
@@ -141,8 +141,12 @@ class GrammarParser:
         elif token.type is TokenType.IDENTIFIER:
             colon_token = self.peek_token()
             if colon_token.type is TokenType.COLON:
+                if not named:
+                    self.fail('Named item is not allowed here', token)
+
                 self.consume_token()
-                item = self._parse_item()
+                item = self._parse_item(named=False)
+
                 return ast.NamedItemNode(
                     token.range.extend(item.range), name=token.content, item=item
                 )
@@ -151,7 +155,7 @@ class GrammarParser:
 
         elif token.type is TokenType.OPENPAREN:
             items = []
-            item = self._parse_item()
+            item = self._parse_item(named=False)
             range = token.range.extend(item.range)
 
             items.append(item)
@@ -163,23 +167,21 @@ class GrammarParser:
                     range = range.extend(token.range)
                     break
 
-                items.append(self._parse_item())
+                items.append(self._parse_item(named=False))
 
-            return ast.GroupItemNode(range, items=items)
+            item = ast.GroupItemNode(range, items=items)
 
         else:
             self.fail('Unexpected Token', token)
 
-        while True:
-            token = self.peek_token()
-            if token.type is TokenType.PLUS:
-                item = ast.RepeatItemNode(item.range.extend(token.range), item=item)
-            elif token.type is TokenType.STAR:
-                item = ast.OptionalItemNode(item.range.extend(token.range), item=item)
-            else:
-                break
-
+        token = self.peek_token()
+        if token.type is TokenType.PLUS:
             self.consume_token()
+            item = ast.RepeatItemNode(item.range.extend(token.range), item=item)
+
+        elif token.type is TokenType.STAR:
+            self.consume_token()
+            item = ast.OptionalRepeatItemNode(item.range.extend(token.range), item=item)
 
         return item
 

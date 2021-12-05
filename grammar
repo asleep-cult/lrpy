@@ -1,2 +1,0 @@
-rule Test:
-    (name: (name+ [';'] expression*))
