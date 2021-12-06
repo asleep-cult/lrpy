@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import TypeVar
+from typing import TYPE_CHECKING
 
-T = TypeVar('T', bound='TextSpan')
+if TYPE_CHECKING:
+    from typing_extensions import Self
 
 
 class TextSpan:
@@ -22,22 +23,15 @@ class TextSpan:
     def __repr__(self) -> str:
         return f'{self.startpos}-{self.endpos}'
 
-    def copy(self: T) -> T:
+    def copy(self) -> Self:
         return self.__class__(self.startpos, self.endpos)
 
     def extend(self, other: TextSpan) -> TextSpan:
         if not isinstance(other, TextSpan):
             raise TypeError(f'Expected TextSpan, got {other.__class__.__name__}')
 
-        if other.startpos < self.startpos:
-            startpos = other.startpos
-        else:
-            startpos = self.startpos
-
-        if other.endpos > self.endpos:
-            endpos = other.endpos
-        else:
-            endpos = self.endpos
+        startpos = min(self.startpos, other.startpos)
+        endpos = max(self.endpos, other.endpos)
 
         return self.__class__(startpos, endpos)
 

@@ -1,5 +1,3 @@
-import io
-
 from . import ast
 from .exceptions import InvalidGrammarError
 from .scanner import GrammarScanner
@@ -9,23 +7,10 @@ from .tokens import Token, TokenType
 class GrammarParser:
     __slots__ = ('source', 'scanner', 'tokens')
 
-    def __init__(self, source: io.TextIOBase) -> None:
+    def __init__(self, source: str, *, filename: str = '<string>') -> None:
         self.source = source
-        self.scanner = GrammarScanner(source)
+        self.scanner = GrammarScanner(source, filename=filename)
         self.tokens = []
-
-    def fail(self, msg: str, token: Token):
-        self.source.seek(self.scanner.linestarts[token.range.startlineno - 1])
-        line = (
-            self.source.readline().strip('\n') + '\n' + (' ' * token.range.startpos)
-            + '    ' + ('^' * (token.range.endpos - token.range.startpos))
-        )
-
-        name = getattr(self.source, 'name', '<unknown>')
-        raise InvalidGrammarError(
-            f'\nFile {name!r}, line {token.range.startlineno}: {msg}'
-            f'\n    {line}'
-        )
 
     def peek_token(self) -> Token:
         try:
@@ -56,19 +41,25 @@ class GrammarParser:
             rule_token.type is not TokenType.IDENTIFIER
             or rule_token.content != 'rule'
         ):
-            self.fail('Expected "rule"', rule_token)
+            raise InvalidGrammarError(
+                self.scanner.fmterror('Expected "rule"', rule_token.span)
+            )
 
         name_token = self.consume_token()
         if name_token.type is not TokenType.IDENTIFIER:
-            self.fail('Expected identifier', name_token)
+            raise InvalidGrammarError(
+                self.scanner.fmterror('Expected identifier', name_token.span)
+            )
 
         colon_token = self.consume_token()
         if colon_token.type is not TokenType.COLON:
-            self.fail('Expected colon', colon_token)
+            raise InvalidGrammarError(
+                self.scanner.fmterror('Expected colon', colon_token.span)
+            )
 
         alternatives = []
         alternative = self._parse_alternative()
-        range = rule_token.range.extend(alternative.range)
+        span = rule_token.span.extend(alternative.span)
 
         alternatives.append(alternative)
 
@@ -78,23 +69,25 @@ class GrammarParser:
             token = self.peek_token()
             if token.type is TokenType.OPENPAREN:
                 alternative = self._parse_alternative()
-                range = range.extend(alternative.range)
+                span = span.extend(alternative.span)
                 alternatives.append(alternative)
             else:
                 break
 
-        return ast.RuleNode(range=range, name=name_token.content, alternatives=alternatives)
+        return ast.RuleNode(span=span, name=name_token.content, alternatives=alternatives)
 
     def _parse_alternative(self) -> ast.AlternativeNode:
         self.skip_newlines()
 
         openparen_token = self.consume_token()
         if openparen_token.type is not TokenType.OPENPAREN:
-            self.fail('Expected open parenthesis', openparen_token)
+            raise InvalidGrammarError(
+                self.scanner.fmterror('Expected open parenthesis', openparen_token.span)
+            )
 
         items = []
         item = self._parse_item()
-        range = openparen_token.range.extend(item.range)
+        span = openparen_token.span.extend(item.span)
 
         items.append(item)
 
@@ -102,7 +95,7 @@ class GrammarParser:
             token = self.peek_token()
             if token.type is TokenType.CLOSEPAREN:
                 self.consume_token()
-                range = range.extend(token.range)
+                span = span.extend(token.span)
 
                 break
 
@@ -113,14 +106,16 @@ class GrammarParser:
             self.consume_token()
             token = self.consume_token()
             if token.type is not TokenType.FOREIGNBLOCK:
-                self.fail('Expected block', token)
+                raise InvalidGrammarError(
+                    self.scanner.fmterror('Expected block', token.span)
+                )
 
-            range = range.extend(token.range)
+            span = span.extend(token.span)
             action = token.content
         else:
             action = None
 
-        return ast.AlternativeNode(range, items=items, action=action)
+        return ast.AlternativeNode(span, items=items, action=action)
 
     def _parse_item(self, *, named=True) -> ast.ItemNode:
         token = self.consume_token()
@@ -129,34 +124,38 @@ class GrammarParser:
 
             closebracket_token = self.consume_token()
             if closebracket_token.type is not TokenType.CLOSEBRACKET:
-                self.fail('Expected close bracket', closebracket_token)
+                raise InvalidGrammarError(
+                    self.scanner.fmterror('Expected close bracket', closebracket_token.span)
+                )
 
             item = ast.OptionalItemNode(
-                token.range.extend(closebracket_token.range), item=item
+                token.span.extend(closebracket_token.span), item=item
             )
 
         elif token.type is TokenType.STRING:
-            item = ast.StringItemNode(token.range, string=token.content)
+            item = ast.StringItemNode(token.span, string=token.content)
 
         elif token.type is TokenType.IDENTIFIER:
             colon_token = self.peek_token()
             if colon_token.type is TokenType.COLON:
                 if not named:
-                    self.fail('Named item is not allowed here', token)
+                    raise InvalidGrammarError(
+                        self.scanner.fmterror('Named item is not allowed here', token.span)
+                    )
 
                 self.consume_token()
                 item = self._parse_item(named=False)
 
                 return ast.NamedItemNode(
-                    token.range.extend(item.range), name=token.content, item=item
+                    token.span.extend(item.span), name=token.content, item=item
                 )
             else:
-                item = ast.IdentifierItemNode(token.range, identifier=token.content)
+                item = ast.IdentifierItemNode(token.span, identifier=token.content)
 
         elif token.type is TokenType.OPENPAREN:
             items = []
             item = self._parse_item(named=False)
-            range = token.range.extend(item.range)
+            span = token.span.extend(item.span)
 
             items.append(item)
 
@@ -164,24 +163,26 @@ class GrammarParser:
                 token = self.peek_token()
                 if token.type is TokenType.CLOSEPAREN:
                     self.consume_token()
-                    range = range.extend(token.range)
+                    span = span.extend(token.span)
                     break
 
                 items.append(self._parse_item(named=False))
 
-            item = ast.GroupItemNode(range, items=items)
+            item = ast.GroupItemNode(span, items=items)
 
         else:
-            self.fail('Unexpected Token', token)
+            raise InvalidGrammarError(
+                self.scanner.fmterror('Unexpected Token', token.span)
+            )
 
         token = self.peek_token()
         if token.type is TokenType.PLUS:
             self.consume_token()
-            item = ast.RepeatItemNode(item.range.extend(token.range), item=item)
+            item = ast.RepeatItemNode(item.span.extend(token.span), item=item)
 
         elif token.type is TokenType.STAR:
             self.consume_token()
-            item = ast.OptionalRepeatItemNode(item.range.extend(token.range), item=item)
+            item = ast.OptionalRepeatItemNode(item.span.extend(token.span), item=item)
 
         return item
 
@@ -195,4 +196,4 @@ class GrammarParser:
 
             rules.append(self._parse_rule())
 
-        return ast.GrammarNode(start_token.range.extend(token.range), rules=rules)
+        return ast.GrammarNode(start_token.span.extend(token.span), rules=rules)
