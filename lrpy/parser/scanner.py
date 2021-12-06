@@ -1,5 +1,3 @@
-import io
-
 from .exceptions import InvalidGrammarError
 from .tokens import (
     ForeignBlockToken,
@@ -14,58 +12,35 @@ from ..stringreader import (
     is_identifier_start,
     is_linebreak,
 )
-from ..textrange import TextRange
+from ..textspan import TextSpan
 
 
 class GrammarScanner(BaseScanner):
     __slots__ = ('parenstack', 'newline')
 
-    def __init__(self, source: io.TextIOBase) -> None:
-        super().__init__(source)
+    def __init__(self, source: str, *, filename: str = '<string>') -> None:
+        super().__init__(source, filename=filename)
         self.parenstack = []
         self.newline = False
 
-    def create_range(self, startpos: int, endpos: int) -> TextRange:
-        lineno = self.lineno()
-        return TextRange(startpos, endpos, lineno, lineno)
-
-    def fail(self, msg: str, startpos: int, lineno: int) -> None:
-        self.source.seek(self.linestarts[lineno - 1])
-        line = self.source.readline().strip('\n') + '\n' + (' ' * startpos) + '    ^'
-
-        name = getattr(self.source, 'name', '<unknown>')
-        raise InvalidGrammarError(
-            f'\nFile {name!r}, line {lineno}: {msg}'
-            f'\n    {line}'
-        )
+    def create_span(self, startpos: int) -> TextSpan:
+        return TextSpan(startpos, self.position())
 
     def scan(self) -> Token:
-        if self.reader is None:
-            self.readline()
-
         reader = self.reader
         while True:
-            if reader.at_eof():
-                if reader.tell() == 0:
-                    position = self.position()
-                    lineno = self.lineno()
-                    return Token(TokenType.EOF, TextRange(position, position, lineno, lineno))
-
-                reader = self.readline()
-
             reader.skip_whitespace()
             if reader.at_eof():
+                return Token(TokenType.EOF, self.create_span(self.position()))
+
+            if reader.expect('#'):
+                if not reader.skip_expect('\n'):
+                    reader.skip_to_eof()
+
                 continue
 
-            char = reader.peek()
-            if char == '-':
-                char = reader.peek(1)
-                if char == '-':
-                    reader.skip_to_eof()
-                    continue
-
+            char = self.reader.peek()
             startpos = self.position()
-            startlineno = self.lineno()
 
             if is_linebreak(char):
                 reader.advance()
@@ -74,7 +49,7 @@ class GrammarScanner(BaseScanner):
                     continue
 
                 self.newline = True
-                return Token(TokenType.NEWLINE, self.create_range(startpos, startpos + 1))
+                return Token(TokenType.NEWLINE, self.create_span(startpos))
 
             self.newline = False
 
@@ -86,7 +61,7 @@ class GrammarScanner(BaseScanner):
 
                 endpos = self.position()
                 content = reader.source[startpos:endpos]
-                return IdentifierToken(self.create_range(startpos, endpos), content)
+                return IdentifierToken(TextSpan(startpos, endpos), content)
 
             if char in ('\'' '\"'):
                 terminator = char
@@ -95,94 +70,89 @@ class GrammarScanner(BaseScanner):
                 contentstart = self.position()
 
                 while True:
-                    if reader.at_eof():
-                        self.fail('Unterminated string literal', startpos, startlineno)
+                    if is_linebreak(reader.peek()):
+                        raise InvalidGrammarError(
+                            self.fmterror(
+                                'Unterminated string literal', self.create_span(startpos)
+                            )
+                        )
 
-                    char = reader.peek()
-                    if char == '\\':
-                        reader.advance(2)
-                    elif char != terminator:
-                        reader.advance(1)
-                    else:
+                    if reader.expect('\\'):
+                        reader.advance()
+
+                    if reader.expect(terminator):
                         break
 
-                contnentend = self.position()
-                reader.advance()
-
+                contnentend = self.position() - 1
                 content = reader.source[contentstart:contnentend]
 
                 endpos = self.position()
-                return StringToken(
-                    TextRange(startpos, endpos, startlineno, startlineno), content
-                )
+                return StringToken(TextSpan(startpos, endpos), content)
 
             if char == '{':
                 reader.advance()
-                blockstart = self.position()
-
-                content = io.StringIO()
+                contentstart = self.position()
 
                 while True:
                     if reader.at_eof():
-                        if reader.tell() == 0:
-                            self.fail('Unterminated Block', startpos, startlineno)
-
-                        content.write(self.reader.source[blockstart:])
-
-                        reader = self.readline()
-                        blockstart = 0
+                        raise InvalidGrammarError(
+                            self.fmterror('Unterminated foreign block', self.create_span(startpos))
+                        )
 
                     if reader.expect('}'):
-                        if blockstart != 0:
-                            content.write(self.reader.source[blockstart:-2])
-
                         break
-                    else:
-                        reader.advance()
+
+                    reader.advance()
+
+                contentend = self.position() - 1
+                content = self.reader.source[contentstart:contentend]
 
                 endpos = self.position()
-                endlineno = self.lineno()
-                return ForeignBlockToken(
-                    TextRange(startpos, endpos, startlineno, endlineno), content.getvalue()
-                )
+                return ForeignBlockToken(TextSpan(startpos, endpos), content)
 
             if reader.expect('('):
                 self.parenstack.append(TokenType.OPENPAREN)
-                return Token(TokenType.OPENPAREN, self.create_range(startpos, startpos + 1))
+                return Token(TokenType.OPENPAREN, self.create_span(startpos))
 
             elif reader.expect(')'):
                 if (
                     not self.parenstack
                     or self.parenstack.pop() is not TokenType.OPENPAREN
                 ):
-                    self.fail('Unmatched closing parenthesis', startpos, startlineno)
+                    raise InvalidGrammarError(
+                        self.fmterror('Unmatched closing parenthesis', self.create_span(startpos))
+                    )
 
-                return Token(TokenType.CLOSEPAREN, self.create_range(startpos, startpos + 1))
+                return Token(TokenType.CLOSEPAREN, self.create_span(startpos))
 
             elif reader.expect('['):
                 self.parenstack.append(TokenType.OPENBRACKET)
-                return Token(TokenType.OPENBRACKET, self.create_range(startpos, startpos + 1))
+                return Token(TokenType.OPENBRACKET, self.create_span(startpos))
 
             elif reader.expect(']'):
                 if (
                     not self.parenstack
                     or self.parenstack.pop() is not TokenType.OPENBRACKET
                 ):
-                    self.fail('Unmatched closing bracket', startpos, startlineno)
+                    raise InvalidGrammarError(
+                        self.fmterror('Unmatched closing bracket', self.create_span(startpos))
+                    )
 
-                return Token(TokenType.CLOSEBRACKET, self.create_range(startpos, startpos + 1))
+                return Token(TokenType.CLOSEBRACKET, self.create_span(startpos))
 
             elif reader.expect(':'):
-                return Token(TokenType.COLON, self.create_range(startpos, startpos + 1))
+                return Token(TokenType.COLON, self.create_span(startpos))
 
             elif reader.expect('+'):
-                return Token(TokenType.PLUS, self.create_range(startpos, startpos + 1))
+                return Token(TokenType.PLUS, self.create_span(startpos))
 
             elif reader.expect('*'):
-                return Token(TokenType.STAR, self.create_range(startpos, startpos + 1))
+                return Token(TokenType.STAR, self.create_span(startpos))
 
             elif reader.expect('='):
                 if reader.expect('>'):
-                    return Token(TokenType.ARROW, self.create_range(startpos, startpos + 1))
+                    return Token(TokenType.ARROW, self.create_span(startpos))
 
-            self.fail('Invalid Token', startpos, startlineno)
+            raise InvalidGrammarError(
+                self.fmterror('Invalid Token', self.create_span(startpos))
+            )

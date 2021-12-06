@@ -1,7 +1,7 @@
 import enum
 
 from ..bases import BaseToken
-from ..textrange import TextRange
+from ..textspan import TextSpan
 
 
 class TokenType(enum.IntEnum):
@@ -29,35 +29,35 @@ class TokenType(enum.IntEnum):
 class Token(BaseToken):
     __slots__ = ()
 
-    def __init__(self, type: TokenType, range: TextRange) -> None:
-        super().__init__(type, range)
+    def __init__(self, type: TokenType, span: TextSpan) -> None:
+        super().__init__(type, span)
 
 
 class ForeignBlockToken(Token):
     __slots__ = ('content',)
 
-    def __init__(self, range: TextRange, content: str) -> None:
-        super().__init__(TokenType.FOREIGNBLOCK, range)
+    def __init__(self, span: TextSpan, content: str) -> None:
+        super().__init__(TokenType.FOREIGNBLOCK, span)
         self.content = content
 
 
 class StringToken(BaseToken):
     __slots__ = ('content',)
 
-    def __init__(self, range: TextRange, content: str) -> None:
-        super().__init__(TokenType.STRING, range)
+    def __init__(self, span: TextSpan, content: str) -> None:
+        super().__init__(TokenType.STRING, span)
         self.content = content
 
     def __repr__(self) -> str:
-        return f'<{self.__class__.__name__} content={self.content!r} {self.range!r}>'
+        return f'<{self.__class__.__name__} content={self.content!r} {self.span!r}>'
 
 
 class IdentifierToken(BaseToken):
     __slots__ = ('content',)
 
-    def __init__(self, range: TextRange, content: str) -> None:
-        super().__init__(TokenType.IDENTIFIER, range)
+    def __init__(self, span: TextSpan, content: str) -> None:
+        super().__init__(TokenType.IDENTIFIER, span)
         self.content = content
 
     def __repr__(self) -> str:
-        return f'<{self.__class__.__name__} content={self.content!r} {self.range!r}>'
+        return f'<{self.__class__.__name__} content={self.content!r} {self.span!r}>'
