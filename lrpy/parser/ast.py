@@ -27,18 +27,24 @@ class GrammarNode(BaseNode):
 
 
 class RuleNode(BaseNode):
-    __slots__ = ('name', 'alternatives')
+    __slots__ = ('toplevel', 'name', 'alternatives')
 
-    def __init__(self, span: TextSpan, *, name: str, alternatives: list[AlternativeNode]) -> None:
+    def __init__(
+        self, span: TextSpan, *, toplevel: bool, name: str, alternatives: list[AlternativeNode]
+    ) -> None:
         super().__init__(span)
+        self.toplevel = toplevel
         self.name = name
         self.alternatives = alternatives
 
     def __repr__(self) -> str:
-        return f'RuleNode({self.span!r}, name={self.name!r}, alternatives={self.alternatives!r})'
+        return (
+            f'RuleNode({self.span!r}, toplevel={self.toplevel}, '
+            f'name={self.name!r}, alternatives={self.alternatives!r})'
+        )
 
     def __str__(self) -> str:
-        parts = [f'rule {self.name} {{']
+        parts = [f'rule {"$" * self.toplevel}{self.name} {{']
 
         for alternative in self.alternatives:
             items = ' '.join(str(item) for item in alternative.items)

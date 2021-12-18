@@ -2,13 +2,11 @@ from __future__ import annotations
 
 from typing import Iterable, Optional
 
-from ..bases import TokenEnum
 from ..grammar.grammar import (
     Grammar,
     Nonterminal,
     Production,
     Symbol,
-    Terminal,
 )
 
 
@@ -22,59 +20,105 @@ class LRItem:
     def __repr__(self) -> str:
         return f'Item(production={self.production!r}, position={self.position})'
 
+    def __eq__(self, other: LRItem) -> bool:
+        if not isinstance(other, LRItem):
+            return NotImplemented
+
+        return (
+            self.production == other.production
+            and self.position == other.position
+        )
+
+    @property
+    def reducible(self) -> bool:
+        return self.position == len(self.production.symbols)
+
+    @property
+    def shiftable(self) -> bool:
+        return self.position <= len(self.production.symbols)
+
+    @property
+    def symbol(self) -> Optional[Symbol]:
+        if not self.reducible:
+            return self.production.symbols[self.position]
+
+    def advance(self):
+        return self.__class__(self.production, self.position + 1)
+
 
 class LRState:
-    __slots__ = ('position', 'items')
+    __slots__ = ('stateno', 'items', 'reductions', 'shifts', 'gotos')
 
-    def __init__(self, position: int, items: set[LRItem]) -> None:
-        self.position = position
+    def __init__(self, stateno: int, items: list[LRItem]) -> None:
+        self.stateno = stateno
         self.items = items
+        self.shifts: dict[int, int] = {}
+        self.gotos: dict[str, int] = {}
+        self.reductions = []
 
     def __repr__(self) -> str:
-        return f'State(position={self.position!r}, items={self.items!r})'
+        return f'LRState(stateno={self.stateno}, items={self.items!r})'
+
+    def __eq__(self, other):
+        if not isinstance(other, LRState):
+            return NotImplemented
+
+        return self.items == other.items
 
 
 class LRGenerator:
-    __slots__ = ('grammar', 'first_table')
+    __slots__ = ('grammar', 'ntstates')
 
     def __init__(self, grammar: Grammar) -> None:
         self.grammar = grammar
 
-        self.first_table = {}
+    def closure(self, items: Iterable[LRItem]) -> list[LRItem]:
+        stack = list(items)
+        closure = []
 
-        updated = True
-        while updated:
-            for nonterminal in grammar.nonterminals.values():
-                for production in nonterminal.productions:
-                    tokens = self.first(production.symbols)
-                    try:
-                        first = self.first_table[nonterminal.name]
-                    except KeyError:
-                        first = set()
-                        self.first_table[nonterminal.name] = first
+        while stack:
+            item = stack.pop()
+            if isinstance(item.symbol, Nonterminal):
+                symbol = self.grammar.nonterminals[item.symbol.name]
 
-                    if len(first) != len(tokens):
-                        first.update(tokens)
-                        updated = True
+                for production in symbol.productions:
+                    item = LRItem(production, 0)
 
-            updated = False
-
-    def first(
-        self, symbols: Iterable[Symbol], *, lookahead: Optional[TokenEnum] = None
-    ) -> set[TokenEnum]:
-        # Returns a set of all the terminals some symbols can start with
-        terminals = set()
-
-        for symbol in symbols:
-            if isinstance(symbol, Terminal):
-                terminals.add(symbol.token)
-
-            elif isinstance(symbol, Nonterminal):
-                first = self.first_table.get(symbol.name)
-                if first is not None:
-                    terminals.update(first)
-
+                    if item not in closure:
+                        stack.append(item)
+                        closure.append(item)
             else:
-                raise TypeError('Expected Symbol')
+                closure.append(item)
 
-        return terminals
+        return closure
+
+    def items(self, nonterminal) -> list[LRItem]:
+        return [LRItem(production, 0) for production in nonterminal.productions]
+
+    def generate(self) -> list[LRState]:
+        states = []
+
+        for entrypoint in self.grammar.entrypoints:
+            stack = []
+
+            symbol = self.grammar.nonterminals[entrypoint]
+            stack.append(self.items(symbol))
+
+            while stack:
+                items = self.closure(stack.pop())
+                state = LRState(len(states), items)
+
+                for item in items:
+                    if item.reducible:
+                        state.reductions.append(item.production)
+                    else:
+                        stack.append([item.advance()])
+
+                        if isinstance(item.symbol, Nonterminal):
+                            state.gotos[item.symbol.name] = len(states) + 1
+                        else:
+                            state.shifts[item.symbol.token] = len(states) + 1
+
+                states.append(state)
+
+            return states

@@ -45,6 +45,13 @@ class GrammarParser:
                 self.scanner.fmterror('Expected "rule"', rule_token.span)
             )
 
+        dollar_token = self.peek_token()
+        if dollar_token.type is TokenType.DOLLAR:
+            self.consume_token()
+            toplevel = True
+        else:
+            toplevel = False
+
         name_token = self.consume_token()
         if name_token.type is not TokenType.IDENTIFIER:
             raise InvalidGrammarError(
@@ -74,7 +81,9 @@ class GrammarParser:
             else:
                 break
 
-        return ast.RuleNode(span=span, name=name_token.content, alternatives=alternatives)
+        return ast.RuleNode(
+            span=span, toplevel=toplevel, name=name_token.content, alternatives=alternatives
+        )
 
     def _parse_alternative(self) -> ast.AlternativeNode:
         self.skip_newlines()

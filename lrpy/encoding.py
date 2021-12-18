@@ -4,8 +4,8 @@ import builtins
 import codecs
 from typing import Optional
 
-from .exceptions import InvalidEncodingDeclarationError
-from ..stringreader import StringReader
+from .parser.exceptions import InvalidEncodingDeclarationError
+from .stringreader import StringReader
 
 
 def normalize_encoding(endocing):

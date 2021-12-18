@@ -23,6 +23,7 @@ class TokenType(enum.IntEnum):
     COLON = enum.auto()
     PLUS = enum.auto()
     STAR = enum.auto()
+    DOLLAR = enum.auto()
     ARROW = enum.auto()
 
 

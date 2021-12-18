@@ -1,16 +1,19 @@
 from __future__ import annotations
 
-import enum
 from typing import Optional, Union
 
 
 class Grammar:
     def __init__(self) -> None:
+        self.entrypoints: list[str] = []
         self.terminals: dict[str, TerminalDef] = {}
         self.nonterminals: dict[str, NonterminalDef] = {}
 
-    def add_terminal(self, *, type: TerminalType, string: str) -> None:
-        self.terminals[string] = TerminalDef(type=type, string=string)
+    def add_entrypoint(self, *, name: str) -> None:
+        self.entrypoints.append(name)
+
+    def add_terminal(self, *, string: str, value: int) -> None:
+        self.terminals[string] = TerminalDef(string=string, value=value)
 
     def add_nonterminal(self, *, name: str, productions: list[Production]) -> None:
         self.nonterminals[name] = NonterminalDef(name=name, productions=productions)
@@ -28,6 +31,12 @@ class Terminal:
     def __repr__(self) -> str:
         return f'Terminal(token={self.token})'
 
+    def __eq__(self, other: Terminal) -> bool:
+        if not isinstance(other, Terminal):
+            return NotImplemented
+
+        return self.token == other.token
+
 
 class Nonterminal:
     __slots__ = ('name',)
@@ -37,6 +46,12 @@ class Nonterminal:
 
     def __repr__(self) -> str:
         return f'Nonterminal(name={self.name!r})'
+
+    def __eq__(self, other: Nonterminal) -> bool:
+        if not isinstance(other, Nonterminal):
+            return NotImplemented
+
+        return self.name == other.name
 
 
 Symbol = Union[Terminal, Nonterminal]
@@ -52,6 +67,15 @@ class Action:
     def __repr__(self) -> str:
         return f'Action(names={self.names!r}, body={self.body!r})'
 
+    def __eq__(self, other: Action) -> bool:
+        if not isinstance(other, Action):
+            return NotImplemented
+
+        return (
+            self.names == other.names
+            and self.body == other.body
+        )
+
 
 class Production:
     __slots__ = ('symbols', 'action')
@@ -62,6 +86,15 @@ class Production:
 
     def __repr__(self) -> str:
         return f'Production(symbols={self.symbols}, action={self.action!r})'
+
+    def __eq__(self, other: Production) -> bool:
+        if not isinstance(other, Production):
+            return NotImplemented
+
+        return (
+            self.symbols == other.symbols
+            and self.action == other.action
+        )
 
 
 class NonterminalDef:
@@ -74,18 +107,31 @@ class NonterminalDef:
     def __repr__(self) -> str:
         return f'NonterminalDef(name={self.name!r}, productions={self.productions!r})'
 
+    def __eq__(self, other: NonterminalDef) -> bool:
+        if not isinstance(other, NonterminalDef):
+            return NotImplemented
 
-class TerminalType(enum.IntEnum):
-    IDENTIFIER = enum.auto()
-    STRING = enum.auto()
+        return (
+            self.name == other.name
+            and self.productions == other.productions
+        )
 
 
 class TerminalDef:
-    __slots__ = ('type', 'string')
+    __slots__ = ('string', 'value')
 
-    def __init__(self, *, type: TerminalType, string: str) -> None:
-        self.type = type
+    def __init__(self, *, string: str, value: int) -> None:
         self.string = string
+        self.value = value
 
     def __repr__(self) -> str:
-        return f'TerminalDef(type={self.type!r}, string={self.string!r})'
+        return f'TerminalDef(string={self.string!r}, value={self.value})'
+
+    def __eq__(self, other: TerminalDef) -> bool:
+        if not isinstance(other, TerminalDef):
+            return NotImplemented
+
+        return (
+            self.string == other.string
+            and self.value == other.value
+        )

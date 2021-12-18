@@ -83,6 +83,8 @@ class GrammarScanner(BaseScanner):
                     if reader.expect(terminator):
                         break
 
+                    reader.advance()
+
                 contnentend = self.position() - 1
                 content = reader.source[contentstart:contnentend]
 
@@ -148,6 +150,9 @@ class GrammarScanner(BaseScanner):
 
             elif reader.expect('*'):
                 return Token(TokenType.STAR, self.create_span(startpos))
+
+            elif reader.expect('$'):
+                return Token(TokenType.DOLLAR, self.create_span(startpos))
 
             elif reader.expect('='):
                 if reader.expect('>'):

@@ -38,7 +38,9 @@ class BaseScanner:
         self.filename = filename
         self.reader = StringReader(source)
 
-        self.linestarts = [match.end() for match in re.finditer('\n', source)]
+        self.linestarts = []
+        for match in re.finditer('\n', source):
+            self.linestarts.append(match.end())
 
     def __repr__(self) -> str:
         lineno = self.lineno()

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .exceptions import UnknownSymbolError
+from .exceptions import MissingEntryPointError, UnknownSymbolError
 from .grammar import (
     Action,
     Grammar,
@@ -8,16 +8,14 @@ from .grammar import (
     Production,
     Symbol,
     Terminal,
-    TerminalType,
 )
-from ..bases import TokenEnum
 from ..parser import ast
 
 
 class GrammarBuilder:
-    def __init__(self, node: ast.GrammarNode, enum: type[TokenEnum]):
+    def __init__(self, node: ast.GrammarNode, tokens: dict[str, int]):
         self.node = node
-        self.enum = enum
+        self.tokens = tokens
 
         self._expansionid = 0
         self._optionalid = 0
@@ -26,16 +24,14 @@ class GrammarBuilder:
     def _create_symbol(self, item: ast.ItemNode) -> Symbol:
         if isinstance(item, ast.StringItemNode):
             try:
-                token = self.enum.get_token(item.string)
+                token = self.tokens[item.string]
             except KeyError:
-                raise UnknownSymbolError(
-                    f'Unknown symbol {item.string!r} on line {item.range.startlineno}'
-                )
+                raise UnknownSymbolError(f'Unknown symbol {item.string!r}')
             else:
                 return Terminal(token=token)
         elif isinstance(item, ast.IdentifierItemNode):
             try:
-                token = self.enum.get_token(item.identifier)
+                token = self.tokens[item.identifier]
                 return Terminal(token=token)
             except KeyError:
                 pass
@@ -43,9 +39,7 @@ class GrammarBuilder:
             if item.identifier in self.grammar.nonterminals:
                 return Nonterminal(name=item.identifier)
 
-            raise UnknownSymbolError(
-                f'Unknown symbol {item.identifier!r} on line {item.range.startlineno}'
-            )
+            raise UnknownSymbolError(f'Unknown symbol {item.identifier!r}')
 
         raise TypeError('Invalid item provided to create_terminal_symbol')
 
@@ -114,7 +108,7 @@ class GrammarBuilder:
                 symbols=[Nonterminal(name=name), expansion],
                 action=Action(
                     names=[(0, 'symbols'), (1, 'symbol')],
-                    body='symbols.append(symbol); return symbol'
+                    body='symbols.append(symbol); return symbols'
                 )
             )
         ]
@@ -144,16 +138,16 @@ class GrammarBuilder:
 
         return Production(symbols=symbols, action=Action(names=names, body=alternative.action))
 
-    def build(self) -> None:
+    def build(self) -> Grammar:
         self.grammar = Grammar()
 
-        for token in self.enum.get_token_values():
-            if token.value is not None:
-                self.grammar.add_terminal(type=TerminalType.STRING, string=token.value)
-            else:
-                self.grammar.add_terminal(type=TerminalType.IDENTIFIER, string=token.name)
+        for key, value in self.tokens.items():
+            self.grammar.add_terminal(string=key, value=value)
 
         for rule in self.node.rules:
+            if rule.toplevel:
+                self.grammar.add_entrypoint(name=rule.name)
+
             self.grammar.add_nonterminal(name=rule.name, productions=[])
 
         for rule in self.node.rules:
@@ -161,5 +155,10 @@ class GrammarBuilder:
 
             for alternative in rule.alternatives:
                 nonterminal.productions.append(self._create_production(alternative))
+
+        if not self.grammar.entrypoints:
+            raise MissingEntryPointError(
+                'Grammar has no entrypoint. Use "$" to denote a top level rule.'
+            )
 
         return self.grammar
