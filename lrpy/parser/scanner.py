@@ -56,7 +56,7 @@ class GrammarScanner(BaseScanner):
                     self.fmterror('Unterminated string literal', self.create_span(contentstart))
                 )
             else:
-                if self.reader.lookahead(lambda c: c == terminator):
+                if self.reader.expect(terminator):
                     break
 
                 if self.reader.lookahead(is_escape):
@@ -83,13 +83,11 @@ class GrammarScanner(BaseScanner):
                     self.fmterror('Unterminated block', self.create_span(contentstart))
                 )
             else:
-                if self.reader.lookahead(is_block_start):
+                if self.reader.lookahead(is_block_start, advance=False):
                     self.bracelevel += 1
-                    continue
 
-                if self.reader.lookahead(is_block_end):
+                if self.reader.lookahead(is_block_end, advance=False):
                     self.bracelevel -= 1
-                    continue
 
                 self.reader.advance()
 
@@ -101,11 +99,11 @@ class GrammarScanner(BaseScanner):
     def _scan_token(self) -> Token:
         startpos = self.position()
 
-        if self.reader.lookahead(lambda c: c == '('):
+        if self.reader.expect('('):
             self.parenstack.append(TokenType.OPENPAREN)
             return Token(TokenType.OPENPAREN, self.create_span(startpos))
 
-        if self.reader.lookahead(lambda c: c == ')'):
+        if self.reader.expect(')'):
             if (
                 not self.parenstack
                 or self.parenstack.pop() is not TokenType.OPENPAREN
@@ -116,11 +114,11 @@ class GrammarScanner(BaseScanner):
 
             return Token(TokenType.CLOSEPAREN, self.create_span(startpos))
 
-        if self.reader.lookahead(lambda c: c == '['):
+        if self.reader.expect('['):
             self.parenstack.append(TokenType.OPENBRACKET)
             return Token(TokenType.OPENBRACKET, self.create_span(startpos))
 
-        if self.reader.lookahead(lambda c: c == ']'):
+        if self.reader.expect(']'):
             if (
                 not self.parenstack
                 or self.parenstack.pop() is not TokenType.OPENBRACKET
@@ -129,20 +127,20 @@ class GrammarScanner(BaseScanner):
                     self.fmterror('Unmatched closing bracket', self.create_span(startpos))
                 )
 
-        if self.reader.lookahead(lambda c: c == ':'):
+        if self.reader.expect(':'):
             return Token(TokenType.COLON, self.create_span(startpos))
 
-        if self.reader.lookahead(lambda c: c == '+'):
+        if self.reader.expect('+'):
             return Token(TokenType.PLUS, self.create_span(startpos))
 
-        if self.reader.lookahead(lambda c: c == '*'):
+        if self.reader.expect('*'):
             return Token(TokenType.STAR, self.create_span(startpos))
 
-        if self.reader.lookahead(lambda c: c == '$'):
+        if self.reader.expect('$'):
             return Token(TokenType.DOLLAR, self.create_span(startpos))
 
-        if self.reader.lookahead(lambda c: c == '='):
-            if self.reader.lookahead(lambda c: c == '>'):
+        if self.reader.expect('='):
+            if self.reader.expect('>'):
                 return Token(TokenType.ARROW, self.create_span(startpos))
 
         raise InvalidGrammarError(
@@ -155,7 +153,7 @@ class GrammarScanner(BaseScanner):
             if self.reader.at_eof():
                 return Token(TokenType.EOF, self.create_span(self.position()))
 
-            while self.reader.lookahead(lambda c: c == '#'):
+            while self.reader.expect('#'):
                 if not self.reader.goto('\n'):
                     self.reader.goto_eof()
                     return Token(TokenType.EOF, self.create_span(self.position()))

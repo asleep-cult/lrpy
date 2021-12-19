@@ -55,6 +55,9 @@ class StringReader:
 
         return True
 
+    def expect(self, char: str, *, advance: bool = True) -> bool:
+        return self.lookahead(lambda c: c == char, advance=advance)
+
     def skip(self, func: Callable[[str], bool]) -> None:
         while func(self.peek()):
             self.advance()

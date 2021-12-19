@@ -53,7 +53,7 @@ class EncodingDetector:
         reader.skip_whitespace()
 
         for char in self.comment:
-            if not reader.lookahead(lambda c: c == char):
+            if not reader.expect(char):
                 return None
 
         if (
