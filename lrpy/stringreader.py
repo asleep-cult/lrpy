@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Callable, Iterable, Union
+from typing import Callable
 
 
 class EOFType(str):
@@ -25,10 +25,8 @@ class StringReader:
     def tell(self) -> int:
         return self._position
 
-    def advance(self, amount: int = 1) -> int:
-        if not self.at_eof():
-            self._position += amount
-        return self._position
+    def advance(self, amount: int = 1) -> None:
+        self._position += amount
 
     def peek(self, offset: int = 0) -> str:
         try:
@@ -36,40 +34,36 @@ class StringReader:
         except IndexError:
             return EOF
 
-    def skip(self, chars: Iterable[str]) -> int:
-        while self.peek() in chars:
+    def goto(self, string: str) -> bool:
+        try:
+            index = self.source.index(string, self._position)
+        except ValueError:
+            return False
+
+        self._position = index + len(string)
+        return True
+
+    def goto_eof(self):
+        self._position = len(self.source)
+
+    def lookahead(self, func: Callable[[str], bool], *, advance: bool = True) -> bool:
+        if not func(self.peek()):
+            return False
+
+        if advance:
             self.advance()
 
-        return self._position
-
-    def skip_to_eof(self) -> int:
-        return self.advance(len(self.source) - self.tell())
-
-    def skip_whitespace(self, *, newlines: bool = False) -> int:
-        if newlines:
-            return self.skip(' ' '\t' '\n' '\r' '\f')
-        else:
-            return self.skip(' ' '\t' '\f')
-
-    def skip_expect(self, strings: Union[str, Iterable[str]]) -> bool:
-        if isinstance(strings, str):
-            strings = (strings,)
-
-        for string in strings:
-            index = self.source.find(string, self._position)
-            if index != -1:
-                self._position = index + len(string)
-                return True
-
-        return False
-
-    def expect(self, chars: Iterable[str], times: int = 1) -> bool:
-        for i in range(times):
-            if self.peek(i) not in chars:
-                return False
-
-        self.advance(times)
         return True
+
+    def skip(self, func: Callable[[str], bool]) -> None:
+        while func(self.peek()):
+            self.advance()
+
+    def skip_whitespace(self, *, linebreaks: bool = False) -> None:
+        if linebreaks:
+            self.skip(lambda c: is_whitespace(c) or is_linebreak(c))
+        else:
+            self.skip(is_whitespace)
 
     def accumulate(self, func: Callable[[str], bool]) -> str:
         startpos = self.tell()
@@ -81,11 +75,15 @@ class StringReader:
 
 
 def is_whitespace(char: str) -> bool:
-    return char in (' ' '\t' '\f' '\r' '\n')
+    return char in ' \t\f'
 
 
 def is_linebreak(char: str) -> bool:
-    return char == '\n'
+    return char in '\r\n'
+
+
+def is_escape(char: str) -> bool:
+    return char == '\\'
 
 
 def is_identifier_start(char: str) -> bool:
@@ -124,4 +122,4 @@ def is_octal(char: str) -> bool:
 
 
 def is_binary(char: str) -> bool:
-    return char in ('0' '1')
+    return char in '01'

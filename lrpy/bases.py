@@ -3,6 +3,7 @@ from __future__ import annotations
 import bisect
 import io
 import re
+from typing import Optional
 
 from .stringreader import StringReader
 from .textspan import TextSpan
@@ -61,6 +62,12 @@ class BaseScanner:
         ))
 
         return error.getvalue()
+
+    def create_span(self, startpos: int, endpos: Optional[int] = None) -> TextSpan:
+        if endpos is None:
+            endpos = self.position()
+
+        return TextSpan(startpos, endpos)
 
     def position(self) -> int:
         return self.reader.tell()
