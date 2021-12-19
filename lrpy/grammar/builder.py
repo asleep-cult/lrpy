@@ -5,160 +5,168 @@ from .grammar import (
     Action,
     Grammar,
     Nonterminal,
+    NonterminalSymbol,
     Production,
     Symbol,
     Terminal,
+    TerminalSymbol,
 )
 from ..parser import ast
 
 
 class GrammarBuilder:
-    def __init__(self, node: ast.GrammarNode, tokens: dict[str, int]):
+    def __init__(self, node: ast.GrammarNode, tokens: dict[str, int]) -> None:
         self.node = node
         self.tokens = tokens
+        self.grammar = Grammar()
 
-        self._expansionid = 0
-        self._optionalid = 0
-        self._repeatid = 0
+        self._groups = 0
+        self._optionals = 0
+        self._repeats = 0
 
     def _create_symbol(self, item: ast.ItemNode) -> Symbol:
         if isinstance(item, ast.StringItemNode):
-            try:
-                token = self.tokens[item.string]
-            except KeyError:
+            if item.string not in self.tokens:
                 raise UnknownSymbolError(f'Unknown symbol {item.string!r}')
-            else:
-                return Terminal(token=token)
-        elif isinstance(item, ast.IdentifierItemNode):
-            try:
-                token = self.tokens[item.identifier]
-                return Terminal(token=token)
-            except KeyError:
-                pass
 
+            return TerminalSymbol(string=item.string)
+
+        if isinstance(item, ast.IdentifierItemNode):
             if item.identifier in self.grammar.nonterminals:
-                return Nonterminal(name=item.identifier)
+                return NonterminalSymbol(name=item.identifier)
 
-            raise UnknownSymbolError(f'Unknown symbol {item.identifier!r}')
+            if item.identifier not in self.tokens:
+                raise UnknownSymbolError(f'Unknown symbol {item.identifier!r}')
 
-        raise TypeError('Invalid item provided to create_terminal_symbol')
+            return TerminalSymbol(string=item.identifier)
 
-    def _create_expansion_symbol(self, item: ast.ItemNode) -> Symbol:
+        raise TypeError('Expected StringItenNode or IdentifierItemNode')
+
+    def _expand_item(self, item: ast.ItemNode) -> Symbol:
         if isinstance(item, (ast.StringItemNode, ast.IdentifierItemNode)):
             return self._create_symbol(item)
 
-        elif isinstance(item, ast.OptionalItemNode):
-            return self._create_repeat_symbol(item)
+        if isinstance(item, ast.OptionalItemNode):
+            return self._create_optional_symbol(item)
 
-        elif isinstance(item, ast.RepeatItemNode):
-            return self._create_repeat_symbol(item, optional=False)
+        if isinstance(item, ast.RepeatItemNode):
+            return self._create_repeat_symbol(item, False)
 
-        elif isinstance(item, ast.OptionalRepeatItemNode):
-            return self._create_repeat_symbol(item, optional=True)
+        if isinstance(item, ast.OptionalItemNode):
+            return self._create_repeat_symbol(item, True)
 
-        elif isinstance(item, ast.GroupItemNode):
-            symbols = []
-
-            for item in item.items:
-                symbols.append(self._create_expansion_symbol(item))
-
-            name = f'@Expansion{self._expansionid}'
-            self._expansionid += 1
-
-            self.grammar.add_nonterminal(
-                name=name, productions=[Production(symbols=symbols, action=None)]
-            )
-
-            return Nonterminal(name=name)
-
-        raise TypeError('Invalid item provided to create_expansion_symbol')
+        if isinstance(item, ast.GroupItemNode):
+            return self._create_group_symbol(item)
 
     def _create_optional_symbol(self, item: ast.ItemNode) -> Symbol:
-        expansion = self._create_expansion_symbol(item.item)
+        if not isinstance(item, ast.OptionalItemNode):
+            raise TypeError('Expected OptionalItemNode')
 
-        name = f'@Optional{self._optionalid}'
-        self._optionalid += 1
+        symbol = self._expand_item(item)
 
-        self.grammar.add_nonterminal(
-            name=name,
-            productions=[
-                Production(
-                    symbols=[expansion], action=None
-                ),
-                Production(
-                    symbols=[], action=Action(names=[], body='return None')
-                )
-            ]
-        )
+        name = f'__Optional{self._optionals}__'
+        self._optionals += 1
 
-        return Nonterminal(name=name)
+        nonterminal = Nonterminal(name=name)
 
-    def _create_repeat_symbol(self, item: ast.ItemNode, *, optional: bool) -> Symbol:
-        expansion = self._create_expansion_symbol(item.item)
+        production = Production()
+        production.add_symbol(symbol)
+        nonterminal.add_production(production)
 
-        name = f'@Repeat{self._repeatid}'
-        self._repeatid += 1
+        production = Production()
+        nonterminal.add_production(production)
 
-        productions = [
-            Production(
-                symbols=[expansion],
-                action=Action(names=[(0, 'symbol')], body='return [symbol]')
-            ),
-            Production(
-                symbols=[Nonterminal(name=name), expansion],
-                action=Action(
-                    names=[(0, 'symbols'), (1, 'symbol')],
-                    body='symbols.append(symbol); return symbols'
-                )
-            )
-        ]
+        self.grammar.add_nonterminal(nonterminal)
+
+        return NonterminalSymbol(name=name)
+
+    def _create_repeat_symbol(self, item: ast.ItemNode, optional: bool) -> Symbol:
+        if not isinstance(item, (ast.RepeatItemNode, ast.OptionalRepeatItemNode)):
+            raise TypeError('Expected RepeatItemNode or OptionalRepeatItemNode')
+
+        symbol = self._expand_item(item)
+
+        name = f'__Repeat{self._repeats}__'
+        self._repeats += 1
+
+        nonterminal = Nonterminal(name=name)
+
+        production = Production()
+        production.add_symbol(symbol)
+
+        action = Action(body='return [__symbol__]')
+        action.add_name(0, '__symbol__')
+
+        production.set_action(action)
+        nonterminal.add_production(production)
+
+        production = Production()
+        production.add_symbol(NonterminalSymbol(name=name))
+        production.add_symbol(symbol)
+
+        action = Action(body='__symbols__.append(__symbol__); return __symbols__')
+        action.add_name(0, '__symbol__')
+        action.add_name(1, '__symbols__')
+
+        production.set_action(action)
+        nonterminal.add_production(production)
 
         if optional:
-            productions.append(
-                Production(
-                    symbols=[],
-                    action=Action(names=[], body='return None')
-                )
-            )
+            production = Production()
+            nonterminal.add_production(production)
 
-        self.grammar.add_nonterminal(name=name, productions=productions)
+        self.grammar.add_nonterminal(nonterminal)
+        return NonterminalSymbol(name=name)
 
-        return Nonterminal(name=name)
+    def _create_group_symbol(self, item: ast.ItemNode) -> Symbol:
+        if not isinstance(item, ast.GroupItemNode):
+            return TypeError('Expected GroupItemNode')
 
-    def _create_production(self, alternative: ast.AlternativeNode) -> Production:
-        names = []
-        symbols = []
+        name = f'__Group{self._groups}__'
+        self._groups += 1
 
-        for i, item in enumerate(alternative.items):
-            if isinstance(item, ast.NamedItemNode):
-                names.append((i, item.name))
-                item = item.item
+        nonterminal = Nonterminal(name=name)
 
-            symbols.append(self._create_expansion_symbol(item))
+        production = Production()
+        for item in item.items:
+            production.add_symbol(self._expand_item(item))
 
-        return Production(symbols=symbols, action=Action(names=names, body=alternative.action))
+        self.grammar.add_nonterminal(nonterminal)
+        return NonterminalSymbol(name=name)
 
     def build(self) -> Grammar:
-        self.grammar = Grammar()
-
-        for key, value in self.tokens.items():
-            self.grammar.add_terminal(string=key, value=value)
+        for string, value in self.tokens.items():
+            self.grammar.add_terminal(Terminal(string=string, value=value))
 
         for rule in self.node.rules:
             if rule.toplevel:
-                self.grammar.add_entrypoint(name=rule.name)
+                self.grammar.add_entrypoint(rule.name)
 
-            self.grammar.add_nonterminal(name=rule.name, productions=[])
+            self.grammar.add_nonterminal(Nonterminal(name=rule.name))
 
         for rule in self.node.rules:
             nonterminal = self.grammar.nonterminals[rule.name]
 
             for alternative in rule.alternatives:
-                nonterminal.productions.append(self._create_production(alternative))
+                production = Production()
+
+                if alternative.action is not None:
+                    action = Action(body=alternative.action)
+                else:
+                    action = None
+
+                for i, item in enumerate(alternative.items):
+                    if isinstance(item, ast.NamedItemNode):
+                        if action is not None:
+                            action.add_name(i, item.name)
+
+                    production.add_symbol(self._expand_item(item))
+
+                nonterminal.add_production(production)
 
         if not self.grammar.entrypoints:
             raise MissingEntryPointError(
-                'Grammar has no entrypoint. Use "$" to denote a top level rule.'
+                'Grammar has no entrypoint. Use \'$\' to denote an entrypoint'
             )
 
         return self.grammar

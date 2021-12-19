@@ -4,7 +4,7 @@ from typing import Iterable, Optional
 
 from ..grammar.grammar import (
     Grammar,
-    Nonterminal,
+    NonterminalSymbol,
     Production,
     Symbol,
 )
@@ -52,7 +52,7 @@ class LRState:
     def __init__(self, stateno: int, items: list[LRItem]) -> None:
         self.stateno = stateno
         self.items = items
-        self.shifts: dict[int, int] = {}
+        self.shifts: dict[str, int] = {}
         self.gotos: dict[str, int] = {}
         self.reductions = []
 
@@ -78,7 +78,7 @@ class LRGenerator:
 
         while stack:
             item = stack.pop()
-            if isinstance(item.symbol, Nonterminal):
+            if isinstance(item.symbol, NonterminalSymbol):
                 symbol = self.grammar.nonterminals[item.symbol.name]
 
                 for production in symbol.productions:
@@ -114,10 +114,10 @@ class LRGenerator:
                     else:
                         stack.append([item.advance()])
 
-                        if isinstance(item.symbol, Nonterminal):
+                        if isinstance(item.symbol, NonterminalSymbol):
                             state.gotos[item.symbol.name] = len(states) + 1
                         else:
-                            state.shifts[item.symbol.token] = len(states) + 1
+                            state.shifts[item.symbol.string] = len(states) + 1
 
                 states.append(state)
 
