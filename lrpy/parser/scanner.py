@@ -155,11 +155,12 @@ class GrammarScanner(BaseScanner):
             if self.reader.at_eof():
                 return Token(TokenType.EOF, self.create_span(self.position()))
 
-            if self.reader.lookahead(lambda c: c == '#'):
+            while self.reader.lookahead(lambda c: c == '#'):
                 if not self.reader.goto('\n'):
                     self.reader.goto_eof()
+                    return Token(TokenType.EOF, self.create_span(self.position()))
 
-                continue
+                self.reader.skip_whitespace()
 
             startpos = self.position()
 
