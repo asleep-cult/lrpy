@@ -24,6 +24,22 @@ class GrammarBuilder:
         self._optionals = 0
         self._repeats = 0
 
+    def _expand_item(self, item: ast.ItemNode) -> Symbol:
+        if isinstance(item, (ast.StringItemNode, ast.IdentifierItemNode)):
+            return self._create_symbol(item)
+
+        if isinstance(item, ast.OptionalItemNode):
+            return self._create_optional_symbol(item)
+
+        if isinstance(item, ast.RepeatItemNode):
+            return self._create_repeat_symbol(item, False)
+
+        if isinstance(item, ast.OptionalItemNode):
+            return self._create_repeat_symbol(item, True)
+
+        if isinstance(item, ast.GroupItemNode):
+            return self._create_group_symbol(item)
+
     def _create_symbol(self, item: ast.ItemNode) -> Symbol:
         if isinstance(item, ast.StringItemNode):
             if item.string not in self.tokens:
@@ -42,22 +58,6 @@ class GrammarBuilder:
 
         raise TypeError('Expected StringItenNode or IdentifierItemNode')
 
-    def _expand_item(self, item: ast.ItemNode) -> Symbol:
-        if isinstance(item, (ast.StringItemNode, ast.IdentifierItemNode)):
-            return self._create_symbol(item)
-
-        if isinstance(item, ast.OptionalItemNode):
-            return self._create_optional_symbol(item)
-
-        if isinstance(item, ast.RepeatItemNode):
-            return self._create_repeat_symbol(item, False)
-
-        if isinstance(item, ast.OptionalItemNode):
-            return self._create_repeat_symbol(item, True)
-
-        if isinstance(item, ast.GroupItemNode):
-            return self._create_group_symbol(item)
-
     def _create_optional_symbol(self, item: ast.ItemNode) -> Symbol:
         if not isinstance(item, ast.OptionalItemNode):
             raise TypeError('Expected OptionalItemNode')
@@ -74,6 +74,8 @@ class GrammarBuilder:
         nonterminal.add_production(production)
 
         production = Production()
+        action = Action(body='return None')
+        production.set_action(action)
         nonterminal.add_production(production)
 
         self.grammar.add_nonterminal(nonterminal)
@@ -113,6 +115,8 @@ class GrammarBuilder:
 
         if optional:
             production = Production()
+            action = Action(body='return None')
+            production.set_action(action)
             nonterminal.add_production(production)
 
         self.grammar.add_nonterminal(nonterminal)
@@ -140,7 +144,7 @@ class GrammarBuilder:
 
         for rule in self.node.rules:
             if rule.toplevel:
-                self.grammar.add_entrypoint(rule.name)
+                self.grammar.add_entrypoint(NonterminalSymbol(name=rule.name))
 
             self.grammar.add_nonterminal(Nonterminal(name=rule.name))
 

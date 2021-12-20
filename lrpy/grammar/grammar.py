@@ -7,7 +7,7 @@ class Grammar:
     __slots__ = ('entrypoints', 'terminals', 'nonterminals')
 
     def __init__(self) -> None:
-        self.entrypoints: list[str] = []
+        self.entrypoints: list[NonterminalSymbol] = []
         self.terminals: dict[str, Terminal] = {}
         self.nonterminals: dict[str, Nonterminal] = {}
 
@@ -59,6 +59,9 @@ class NonterminalSymbol:
     def __init__(self, *, name: str) -> None:
         self.name = name
 
+    def __hash__(self) -> int:
+        return hash(self.name)
+
     def __eq__(self, other: NonterminalSymbol) -> bool:
         if not isinstance(other, NonterminalSymbol):
             return NotImplemented
@@ -74,6 +77,9 @@ class TerminalSymbol:
 
     def __init__(self, *, string: str) -> None:
         self.string = string
+
+    def __hash__(self) -> int:
+        return hash(self.string)
 
     def __eq__(self, other: TerminalSymbol) -> bool:
         if not isinstance(other, TerminalSymbol):

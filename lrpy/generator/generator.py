@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from typing import Iterable, Optional
 
 from ..grammar.grammar import (
@@ -7,6 +8,7 @@ from ..grammar.grammar import (
     NonterminalSymbol,
     Production,
     Symbol,
+    TerminalSymbol,
 )
 
 
@@ -17,9 +19,6 @@ class LRItem:
         self.production = production
         self.position = position
 
-    def __repr__(self) -> str:
-        return f'Item(production={self.production!r}, position={self.position})'
-
     def __eq__(self, other: LRItem) -> bool:
         if not isinstance(other, LRItem):
             return NotImplemented
@@ -29,96 +28,106 @@ class LRItem:
             and self.position == other.position
         )
 
+    def __repr__(self) -> str:
+        return f'LRItem(production={self.production!r}, position={self.position!r})'
+
     @property
     def reducible(self) -> bool:
         return self.position == len(self.production.symbols)
-
-    @property
-    def shiftable(self) -> bool:
-        return self.position <= len(self.production.symbols)
 
     @property
     def symbol(self) -> Optional[Symbol]:
         if not self.reducible:
             return self.production.symbols[self.position]
 
-    def advance(self):
+    def advance(self) -> LRItem:
         return self.__class__(self.production, self.position + 1)
 
 
 class LRState:
-    __slots__ = ('stateno', 'items', 'reductions', 'shifts', 'gotos')
+    __slots__ = ('index', 'items', 'reductions', 'shifts', 'gotos')
 
-    def __init__(self, stateno: int, items: list[LRItem]) -> None:
-        self.stateno = stateno
+    def __init__(self, index: int, items: list[LRItem]) -> None:
+        self.index = index
         self.items = items
-        self.shifts: dict[str, int] = {}
-        self.gotos: dict[str, int] = {}
-        self.reductions = []
 
-    def __repr__(self) -> str:
-        return f'LRState(stateno={self.stateno}, items={self.items!r})'
+        self.shifts: dict[str, str] = {}
+        self.gotos: dict[str, str] = {}
+        self.reductions: list[Production] = []
 
-    def __eq__(self, other):
-        if not isinstance(other, LRState):
-            return NotImplemented
+    def add_shift(self, symbol: TerminalSymbol, index: int) -> None:
+        self.shifts[symbol.string] = index
 
-        return self.items == other.items
+    def add_goto(self, symbol: NonterminalSymbol, index: int) -> None:
+        self.gotos[symbol.name] = index
+
+    def add_reduction(self, production: Production) -> None:
+        self.reductions.append(production)
 
 
 class LRGenerator:
-    __slots__ = ('grammar', 'ntstates')
+    __slots__ = ('grammar',)
 
     def __init__(self, grammar: Grammar) -> None:
         self.grammar = grammar
 
+    def items(self, symbol: NonterminalSymbol) -> list[LRItem]:
+        items = []
+
+        nonterminal = self.grammar.nonterminals[symbol.name]
+        for production in nonterminal.productions:
+            items.append(LRItem(production, 0))
+
+        return items
+
     def closure(self, items: Iterable[LRItem]) -> list[LRItem]:
         stack = list(items)
-        closure = []
+        closure = list(items)
 
         while stack:
             item = stack.pop()
-            if isinstance(item.symbol, NonterminalSymbol):
-                symbol = self.grammar.nonterminals[item.symbol.name]
+            if not isinstance(item.symbol, NonterminalSymbol):
+                continue
 
-                for production in symbol.productions:
-                    item = LRItem(production, 0)
-
-                    if item not in closure:
-                        stack.append(item)
-                        closure.append(item)
-            else:
-                closure.append(item)
+            for item in self.items(item.symbol):
+                if item not in closure:
+                    closure.append(item)
+                    stack.append(item)
 
         return closure
 
-    def items(self, nonterminal) -> list[LRItem]:
-        return [LRItem(production, 0) for production in nonterminal.productions]
-
     def generate(self) -> list[LRState]:
+        stack = []
         states = []
+        index = 0
 
         for entrypoint in self.grammar.entrypoints:
-            stack = []
+            stack.append((index, self.items(entrypoint)))
+            index += 1
 
-            symbol = self.grammar.nonterminals[entrypoint]
-            stack.append(self.items(symbol))
+        while stack:
+            idx, items = stack.pop()
+            items = self.closure(items)
+            state = LRState(idx, items)
 
-            while stack:
-                items = self.closure(stack.pop())
-                state = LRState(len(states), items)
+            transitions = defaultdict(list)
 
-                for item in items:
-                    if item.reducible:
-                        state.reductions.append(item.production)
-                    else:
-                        stack.append([item.advance()])
+            for item in items:
+                if item.reducible:
+                    state.add_reduction(item.production)
+                else:
+                    shifts = transitions[item.symbol]
+                    shifts.append(item.advance())
 
-                        if isinstance(item.symbol, NonterminalSymbol):
-                            state.gotos[item.symbol.name] = len(states) + 1
-                        else:
-                            state.shifts[item.symbol.string] = len(states) + 1
+            for symbol, shifts in transitions.items():
+                if isinstance(symbol, NonterminalSymbol):
+                    state.add_goto(symbol, index)
+                else:
+                    state.add_shift(symbol, index)
 
-                states.append(state)
+                stack.append((index, shifts))
+                index += 1
 
-            return states
+            states.append(state)
+
+        return states
