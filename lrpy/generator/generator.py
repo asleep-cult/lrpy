@@ -35,7 +35,7 @@ class LRItem:
 
     @property
     def symbol(self) -> Optional[Symbol]:
-        if not self.reducible:
+        if len(self.production.symbols) > self.position:
             return self.production.symbols[self.position]
 
     def is_nonterminal(self):
@@ -161,15 +161,20 @@ class LRGenerator:
         stack = list(self.states)
 
         while stack:
-            transitions = self.transitions(self.closure(stack.pop()))
+            transitions = self.transitions(self.closure(stack.pop(0)))
 
             shifts = {}
             reductions = []
 
             for symbol, items in transitions.items():
                 if symbol is not None:
-                    shifts[symbol] = self.states.setdefault(items, len(self.states))
-                    stack.append(items)
+                    try:
+                        stateno = self.states[items]
+                    except KeyError:
+                        stateno = self.states[items] = len(self.states)
+                        stack.append(items)
+
+                    shifts[symbol] = stateno
                 else:
                     reductions.extend(items)
 
