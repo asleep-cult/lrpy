@@ -32,7 +32,7 @@ class Nonterminal:
 
     def __init__(self, *, name: str) -> None:
         self.name = name
-        self.productions = []
+        self.productions: list[Production] = []
 
     def __hash__(self):
         return hash((self.name, tuple(self.productions)))

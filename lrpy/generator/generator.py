@@ -60,6 +60,10 @@ class LRGenerator:
         self.shifts = []
         self.reductions = []
 
+        self.empty = self.calculate_empty()
+        self.first = self.calculate_first()
+        self.follow = self.calculate_follow()
+
     def items(self, symbol: NonterminalSymbol) -> frozenset[LRItem]:
         nonterminal = self.grammar.nonterminals[symbol.name]
         return frozenset(LRItem(production, 0) for production in nonterminal.productions)
@@ -93,16 +97,18 @@ class LRGenerator:
 
     def build_states(self) -> None:
         for entrypoint in self.grammar.entrypoints:
-            stateno = self.states.setdefault(self.items(entrypoint), len(self.states))
-            self.entrypoints[entrypoint] = stateno
+            self.entrypoints[entrypoint] = self.states.setdefault(
+                self.items(entrypoint), len(self.states)
+            )
 
         stack = list(self.states)
 
         while stack:
+            transitions = self.transitions(self.closure(stack.pop()))
+
             shifts = {}
             reductions = []
 
-            transitions = self.transitions(self.closure(stack.pop()))
             for symbol, items in transitions.items():
                 if symbol is not None:
                     shifts[symbol] = self.states.setdefault(items, len(self.states))
@@ -112,3 +118,23 @@ class LRGenerator:
 
             self.shifts.append(shifts)
             self.reductions.append(reductions)
+
+    def calculate_empty(self):
+        symbols = set()
+        for nonterminal in self.grammar.nonterminals.values():
+            if not all(production.symbols for production in nonterminal.productions):
+                symbols.add(NonterminalSymbol(name=nonterminal.name))
+
+        changed = True
+        while True:
+            changed = False
+
+            for nonterminal in self.grammar.nonterminals.values():
+                if any(
+                    symbols.issuperset(production.symbols) for production in nonterminal.productions
+                ):
+                    symbols.add(NonterminalSymbol(name=nonterminal.name))
+                    changed = True
+
+            if not changed:
+                return symbols
