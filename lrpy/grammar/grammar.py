@@ -34,6 +34,18 @@ class Nonterminal:
         self.name = name
         self.productions = []
 
+    def __hash__(self):
+        return hash((self.name, tuple(self.productions)))
+
+    def __eq__(self, other):
+        if not isinstance(other, Nonterminal):
+            return NotImplemented
+
+        return (
+            self.name == other.name
+            and self.productions == other.productions
+        )
+
     def __repr__(self) -> str:
         return f'Nonterminal(name={self.name!r}, productions={self.productions!r})'
 
@@ -48,6 +60,18 @@ class Terminal:
     def __init__(self, *, string: str, value: int) -> None:
         self.string = string
         self.value = value
+
+    def __hash__(self):
+        return hash((self.string, self.value))
+
+    def __eq__(self, other):
+        if not isinstance(other, Terminal):
+            return NotImplemented
+
+        return (
+            self.string == other.string
+            and self.value == other.value
+        )
 
     def __repr__(self) -> str:
         return f'Terminal(string={self.string!r}, value={self.value!r})'
@@ -98,6 +122,18 @@ class Action:
         self.names: list[tuple[int, str]] = []
         self.body = body
 
+    def __hash__(self):
+        return hash((tuple(self.names), self.body))
+
+    def __eq__(self, other):
+        if not isinstance(other, Action):
+            return NotImplemented
+
+        return (
+            self.names == other.names
+            and self.body == other.body
+        )
+
     def __repr__(self) -> str:
         return f'Action(names={self.names!r}, body={self.body!r})'
 
@@ -112,6 +148,19 @@ class Production:
         self.nonterminal: Optional[str] = None
         self.symbols: list[Symbol] = []
         self.action: Optional[Action] = None
+
+    def __hash__(self):
+        return hash((self.nonterminal, tuple(self.symbols), self.action))
+
+    def __eq__(self, other):
+        if not isinstance(other, Production):
+            return NotImplemented
+
+        return (
+            self.nonterminal == other.nonterminal
+            and self.symbols == other.symbols
+            and self.action == other.action
+        )
 
     def __repr__(self) -> str:
         return (
