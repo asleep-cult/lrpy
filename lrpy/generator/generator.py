@@ -34,10 +34,6 @@ class LRItem:
         return f'LRItem(production={self.production!r}, position={self.position!r})'
 
     @property
-    def reducible(self) -> bool:
-        return self.position == len(self.production.symbols)
-
-    @property
     def symbol(self) -> Optional[Symbol]:
         if not self.reducible:
             return self.production.symbols[self.position]
@@ -50,7 +46,16 @@ class LRItem:
 
 
 class LRGenerator:
-    __slots__ = ('grammar', 'states', 'entrypoints', 'shifts', 'reductions')
+    __slots__ = (
+        'grammar',
+        'states',
+        'entrypoints',
+        'shifts',
+        'reductions',
+        'empty',
+        'first',
+        'follow',
+    )
 
     def __init__(self, grammar: Grammar) -> None:
         self.grammar = grammar
@@ -62,7 +67,59 @@ class LRGenerator:
 
         self.empty = self.calculate_empty()
         self.first = self.calculate_first()
-        self.follow = self.calculate_follow()
+        # self.follow = self.calculate_follow()
+
+    def calculate_empty(self):
+        symbols = set()
+        for nonterminal in self.grammar.nonterminals.values():
+            if not all(production.symbols for production in nonterminal.productions):
+                symbols.add(NonterminalSymbol(name=nonterminal.name))
+
+        while True:
+            changed = False
+
+            for nonterminal in self.grammar.nonterminals.values():
+                if any(
+                    symbols.issuperset(production.symbols) for production in nonterminal.productions
+                ):
+                    symbol = NonterminalSymbol(name=nonterminal.name)
+                    if symbol not in symbols:
+                        symbols.add(NonterminalSymbol(name=nonterminal.name))
+                        changed = True
+
+            if not changed:
+                return symbols
+
+    def calculate_first(self):
+        symbols = {}
+        for terminal in self.grammar.terminals.values():
+            symbol = TerminalSymbol(string=terminal.string)
+            symbols[symbol] = {symbol}
+
+        for nonterminal in self.grammar.nonterminals.values():
+            first = set()
+            for production in nonterminal.productions:
+                for symbol in production.symbols:
+                    first.add(symbol)
+                    if symbol not in self.empty:
+                        break
+
+            symbol = NonterminalSymbol(name=nonterminal.name)
+            symbols[symbol] = first
+
+        while True:
+            changed = False
+
+            for symbol, first in symbols.items():
+                length = len(first)
+                for sym in tuple(first):
+                    symbols[symbol].update(symbols[sym])
+
+                if len(first) > length:
+                    changed = True
+
+            if not changed:
+                return symbols
 
     def items(self, symbol: NonterminalSymbol) -> frozenset[LRItem]:
         nonterminal = self.grammar.nonterminals[symbol.name]
@@ -118,23 +175,3 @@ class LRGenerator:
 
             self.shifts.append(shifts)
             self.reductions.append(reductions)
-
-    def calculate_empty(self):
-        symbols = set()
-        for nonterminal in self.grammar.nonterminals.values():
-            if not all(production.symbols for production in nonterminal.productions):
-                symbols.add(NonterminalSymbol(name=nonterminal.name))
-
-        changed = True
-        while True:
-            changed = False
-
-            for nonterminal in self.grammar.nonterminals.values():
-                if any(
-                    symbols.issuperset(production.symbols) for production in nonterminal.productions
-                ):
-                    symbols.add(NonterminalSymbol(name=nonterminal.name))
-                    changed = True
-
-            if not changed:
-                return symbols

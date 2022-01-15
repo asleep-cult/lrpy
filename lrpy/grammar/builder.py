@@ -34,7 +34,7 @@ class GrammarBuilder:
         if isinstance(item, ast.RepeatItemNode):
             return self._create_repeat_symbol(item, False)
 
-        if isinstance(item, ast.OptionalItemNode):
+        if isinstance(item, ast.OptionalRepeatItemNode):
             return self._create_repeat_symbol(item, True)
 
         if isinstance(item, ast.GroupItemNode):
@@ -62,7 +62,7 @@ class GrammarBuilder:
         if not isinstance(item, ast.OptionalItemNode):
             raise TypeError('Expected OptionalItemNode')
 
-        symbol = self._expand_item(item)
+        symbol = self._expand_item(item.item)
 
         name = f'__Optional{self._optionals}__'
         self._optionals += 1
@@ -86,7 +86,7 @@ class GrammarBuilder:
         if not isinstance(item, (ast.RepeatItemNode, ast.OptionalRepeatItemNode)):
             raise TypeError('Expected RepeatItemNode or OptionalRepeatItemNode')
 
-        symbol = self._expand_item(item)
+        symbol = self._expand_item(item.item)
 
         name = f'__Repeat{self._repeats}__'
         self._repeats += 1
