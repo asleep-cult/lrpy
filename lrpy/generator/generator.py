@@ -48,26 +48,27 @@ class LRItem:
 class LRGenerator:
     __slots__ = (
         'grammar',
+        'entrypoint',
         'states',
-        'entrypoints',
         'shifts',
+        'gotos',
         'reductions',
         'empty',
         'first',
         'follow',
     )
 
-    def __init__(self, grammar: Grammar) -> None:
+    def __init__(self, grammar: Grammar, entrypoint: str) -> None:
         self.grammar = grammar
+        self.entrypoint = self.grammar.nonterminals[entrypoint]
 
         self.states = {}
-        self.entrypoints = {}
         self.shifts = []
+        self.gotos = []
         self.reductions = []
 
         self.empty = self.calculate_empty()
         self.first = self.calculate_first()
-        # self.follow = self.calculate_follow()
 
     def calculate_empty(self):
         symbols = set()
@@ -131,11 +132,13 @@ class LRGenerator:
 
         while stack:
             for item in self.items(stack.pop().symbol):
-                if item not in closure:
-                    closure.add(item)
+                if item in closure:
+                    continue
 
-                    if item.is_nonterminal():
-                        stack.append(item)
+                closure.add(item)
+
+                if item.is_nonterminal():
+                    stack.append(item)
 
         return frozenset(closure)
 
@@ -153,17 +156,14 @@ class LRGenerator:
         return {symbol: frozenset(items) for symbol, items in transitions.items()}
 
     def build_states(self) -> None:
-        for entrypoint in self.grammar.entrypoints:
-            self.entrypoints[entrypoint] = self.states.setdefault(
-                self.items(entrypoint), len(self.states)
-            )
-
+        self.states[self.items(self.entrypoint)] = 0
         stack = list(self.states)
 
         while stack:
             transitions = self.transitions(self.closure(stack.pop(0)))
 
             shifts = {}
+            gotos = {}
             reductions = []
 
             for symbol, items in transitions.items():
@@ -174,9 +174,13 @@ class LRGenerator:
                         stateno = self.states[items] = len(self.states)
                         stack.append(items)
 
-                    shifts[symbol] = stateno
+                    if isinstance(symbol, NonterminalSymbol):
+                        gotos[symbol] = stateno
+                    else:
+                        shifts[symbol] = stateno
                 else:
                     reductions.extend(items)
 
             self.shifts.append(shifts)
+            self.gotos.append(gotos)
             self.reductions.append(reductions)
